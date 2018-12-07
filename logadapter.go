@@ -11,32 +11,60 @@ import (
 
 const (
 	CallDepth = 2 // logger Public Method call depth.
+
 )
 
 var (
-	console = NewLogger(func(lev string, tick time.Time, caller string, msg string) {
+	console = NewLogger(LevDEBUG, func(lev uint8, name string, tick time.Time, caller string, msg string) {
 		timeMsg := tick.Format("01-02 15:04:05.999")
-		fmt.Fprintf(os.Stderr, "[%-18s][%-5s] %s (%s)\r\n", timeMsg, lev, msg, caller)
+		if name == "" {
+			fmt.Fprintf(os.Stderr, "[%-18s][%-5s] %s (%s)\r\n", timeMsg, Level(lev), msg, caller)
+		} else {
+			fmt.Fprintf(os.Stderr, "[%-18s][%-5s][%s] %s (%s)\r\n", timeMsg, Level(lev), name, msg, caller)
+		}
 	})
 )
 
 const (
-	LevDEBUG = "DEBUG"
-	LevINFO  = "INFO"
-	LevWARN  = "WARN"
-	LevERROR = "ERROR"
-	LevFATAL = "FATAL"
+	LevDEBUG uint8 = 0
+	LevVERBO uint8 = 1 // high than debug,lower than info.it convenient to debug one problem when debug msg is too much.
+	LevINFO  uint8 = 2
+	LevWARN  uint8 = 3
+	LevERROR uint8 = 4
+	LevFATAL uint8 = 5
 )
 
+func Level(l uint8) string {
+	switch l {
+	case LevDEBUG:
+		return "DEBUG"
+	case LevINFO:
+		return "INFO"
+	case LevERROR:
+		return "ERROR"
+	case LevVERBO:
+		return "VERBO"
+	case LevFATAL:
+		return "FATAL"
+	default:
+		return "WARN"
+	}
+}
+
 type logger struct {
-	logFunc    func(lev string, tick time.Time, caller string, msg string)
-	warpFunc   func(lev string, msg string)
+	logFunc    func(lev uint8, name string, tick time.Time, caller string, msg string)
+	warpFunc   func(lev uint8, name, msg string)
 	callerSkip int
+	rootLev    uint8
+	name       string
 }
 
 // NewLogger New console with user implement write log msg function, set callerSkip if call is wrapped.
-func NewLogger(logFunc func(lev string, tick time.Time, caller string, msg string), callerSkip ...int) *logger {
-	logger := &logger{logFunc: logFunc}
+func NewLogger(rootLev uint8, logFunc func(lev uint8, name string, tick time.Time, caller string, msg string), callerSkip ...int) *logger {
+	if rootLev > LevFATAL {
+		panic("invalid root level:" + strconv.Itoa(int(rootLev)))
+	}
+	logger := &logger{logFunc: logFunc, rootLev: rootLev}
 	if len(callerSkip) != 0 {
 		logger.callerSkip = callerSkip[0]
 	}
@@ -48,13 +76,16 @@ func NewLogger(logFunc func(lev string, tick time.Time, caller string, msg strin
 //
 //  import "log" ...
 //  logger=log.New(os.Stderr, "official log ", log.Ltime|log.Llongfile)
-//  warpper := NewByWarp(func(lev string, msg string) {
+//  warpper := NewByWarp(LevINFO,func(lev uint8, msg string) {
 //		logger.Output(2+CallDepth, msg)
 //  })
 //  warpper.Info("msg")
 //
-func NewByWarp(logFunc func(lev string, msg string)) *logger {
-	logger := &logger{warpFunc: logFunc}
+func NewByWarp(rootLev uint8, logFunc func(lev uint8, name, msg string)) *logger {
+	if rootLev > LevFATAL {
+		panic("invalid root level:" + strconv.Itoa(int(rootLev)))
+	}
+	logger := &logger{warpFunc: logFunc, rootLev: rootLev}
 	return logger
 }
 
@@ -62,12 +93,35 @@ func NewByWarp(logFunc func(lev string, msg string)) *logger {
 func Console() *logger {
 	return console
 }
+
+// Named special a name for the log for user to classify.keep for reuse is recommand.
+func (l *logger) Named(name string) *logger {
+	if name == l.name {
+		return l
+	}
+	n := *l
+	n.name = name
+	return &n
+}
+
 func (l *logger) Debug(args ...interface{}) {
 	l.log(LevDEBUG, "", args...)
 }
 
 func (l *logger) Debugf(format string, args ...interface{}) {
 	l.log(LevDEBUG, format, args...)
+}
+
+// Verbose verbose is design for get output for one problem when debug msg is too much.
+// delete or set level to debug after resolved is recommend.
+func (l *logger) Verbose(args ...interface{}) {
+	l.log(LevVERBO, "", args...)
+}
+
+// Verbosef verbose is design for get output for one problem when debug msg is too much.
+// delete or set level to debug after resolved is recommend.
+func (l *logger) Verbosef(format string, args ...interface{}) {
+	l.log(LevVERBO, format, args...)
 }
 
 // Infof log infomation msg
@@ -108,7 +162,10 @@ func (l *logger) Fatalf(format string, args ...interface{}) {
 	os.Exit(1)
 }
 
-func (l *logger) log(lev string, format string, fmtArgs ...interface{}) {
+func (l *logger) log(lev uint8, format string, fmtArgs ...interface{}) {
+	if lev < l.rootLev {
+		return
+	}
 	msg := format
 	if msg == "" && len(fmtArgs) > 0 {
 		msg = fmt.Sprint(fmtArgs...)
@@ -116,10 +173,10 @@ func (l *logger) log(lev string, format string, fmtArgs ...interface{}) {
 		msg = fmt.Sprintf(format, fmtArgs...)
 	}
 	if l.warpFunc != nil {
-		l.warpFunc(lev, msg)
+		l.warpFunc(lev, l.name, msg)
 	} else {
 		caller := l.caller(runtime.Caller(l.callerSkip + CallDepth))
-		l.logFunc(lev, time.Now(), caller, msg)
+		l.logFunc(lev, l.name, time.Now(), caller, msg)
 	}
 }
 
@@ -141,6 +198,18 @@ func Debug(args ...interface{}) {
 
 func Debugf(format string, args ...interface{}) {
 	console.log(LevDEBUG, format, args...)
+}
+
+// Verbose verbose is design for get output for one problem when debug msg is too much.
+// delete or set level to debug after resolved is recommend.
+func Verbose(args ...interface{}) {
+	console.log(LevVERBO, "", args...)
+}
+
+// Verbosef verbose is design for get output for one problem when debug msg is too much.
+// delete or set level to debug after resolved is recommend.
+func Verbosef(format string, args ...interface{}) {
+	console.log(LevVERBO, format, args...)
 }
 
 // Info use the default logger log INFO level msg.default logger print msg to stderr.
@@ -179,4 +248,24 @@ func Fatal(args ...interface{}) {
 func Fatalf(format string, args ...interface{}) {
 	console.log(LevFATAL, format, args...)
 	os.Exit(1)
+}
+
+// Named special a name for the log for user to classify.keep for reuse is recommand.
+func Named(name string) *logger {
+	return console.Named(name)
+}
+
+// CurrentStack get stack of current goroutine.
+func CurrentStack() string {
+	n := 4096
+	var trace []byte
+	for i := 0; i < 5; i++ {
+		trace = make([]byte, n)
+		nbytes := runtime.Stack(trace, false)
+		if nbytes < len(trace) {
+			return string(trace[:nbytes])
+		}
+		n *= 2
+	}
+	return string(trace)
 }
