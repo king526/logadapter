@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"strconv"
@@ -15,15 +16,17 @@ const (
 )
 
 var (
-	console = NewLogger(LevDEBUG, func(lev uint8, name string, tick time.Time, caller string, msg string) {
-		timeMsg := tick.Format("01-02 15:04:05.999")
-		if name == "" {
-			fmt.Fprintf(os.Stderr, "[%-18s][%-5s] %s (%s)\r\n", timeMsg, Level(lev), msg, caller)
-		} else {
-			fmt.Fprintf(os.Stderr, "[%-18s][%-5s][%s] %s (%s)\r\n", timeMsg, Level(lev), name, msg, caller)
-		}
-	})
+	console = NewSimple(LevDEBUG, os.Stderr)
 )
+
+func defaultFormat(lev uint8, name string, tick time.Time, caller string, msg string) string {
+	timeMsg := tick.Format("01-02 15:04:05.999")
+	dest := fmt.Sprintf("[%-18s][%-5s] ", timeMsg, Level(lev))
+	if name != "" {
+		dest += "<" + name + ">"
+	}
+	return dest + msg + " (" + caller + ")\r\n"
+}
 
 const (
 	LevDEBUG uint8 = 0
@@ -87,6 +90,13 @@ func NewByWarp(rootLev uint8, logFunc func(lev uint8, name, msg string)) *logger
 	}
 	logger := &logger{warpFunc: logFunc, rootLev: rootLev}
 	return logger
+}
+
+// NewSimple write as console log to writer.
+func NewSimple(rootLev uint8, w io.Writer) *logger {
+	return NewLogger(rootLev, func(lev uint8, name string, tick time.Time, caller string, msg string) {
+		fmt.Fprintf(w, defaultFormat(lev, name, tick, caller, msg))
+	})
 }
 
 // Console get the default Console logger.

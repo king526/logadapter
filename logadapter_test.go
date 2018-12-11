@@ -33,6 +33,14 @@ func Test_Warp(t *testing.T) {
 	warpper.Info("hello,my warpper logger")
 }
 
+func Test_NewSimple(t *testing.T) {
+	fs, _ := os.OpenFile("simple.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+	logger := log.NewSimple(log.LevINFO, fs)
+	logger.Debug("debug log to NewSimple")
+	logger.Info("info log to NewSimple")
+	fs.Close()
+}
+
 func Test_Named(t *testing.T) {
 	log.Named("named").Info("hello")
 }
