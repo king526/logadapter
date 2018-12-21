@@ -1,4 +1,4 @@
-package log
+package logadapter
 
 import (
 	"fmt"
@@ -54,7 +54,7 @@ func Level(l uint8) string {
 	}
 }
 
-type logger struct {
+type Logger struct {
 	logFunc    func(lev uint8, name string, tick time.Time, caller string, msg string)
 	warpFunc   func(lev uint8, name, msg string)
 	callerSkip int
@@ -63,11 +63,11 @@ type logger struct {
 }
 
 // NewLogger New console with user implement write log msg function, set callerSkip if call is wrapped.
-func NewLogger(rootLev uint8, logFunc func(lev uint8, name string, tick time.Time, caller string, msg string), callerSkip ...int) *logger {
+func NewLogger(rootLev uint8, logFunc func(lev uint8, name string, tick time.Time, caller string, msg string), callerSkip ...int) *Logger {
 	if rootLev > LevFATAL {
 		panic("invalid root level:" + strconv.Itoa(int(rootLev)))
 	}
-	logger := &logger{logFunc: logFunc, rootLev: rootLev}
+	logger := &Logger{logFunc: logFunc, rootLev: rootLev}
 	if len(callerSkip) != 0 {
 		logger.callerSkip = callerSkip[0]
 	}
@@ -84,28 +84,28 @@ func NewLogger(rootLev uint8, logFunc func(lev uint8, name string, tick time.Tim
 //  })
 //  warpper.Info("msg")
 //
-func NewByWarp(rootLev uint8, logFunc func(lev uint8, name, msg string)) *logger {
+func NewByWarp(rootLev uint8, logFunc func(lev uint8, name, msg string)) *Logger {
 	if rootLev > LevFATAL {
 		panic("invalid root level:" + strconv.Itoa(int(rootLev)))
 	}
-	logger := &logger{warpFunc: logFunc, rootLev: rootLev}
+	logger := &Logger{warpFunc: logFunc, rootLev: rootLev}
 	return logger
 }
 
 // NewSimple write as console log to writer.
-func NewSimple(rootLev uint8, w io.Writer) *logger {
+func NewSimple(rootLev uint8, w io.Writer) *Logger {
 	return NewLogger(rootLev, func(lev uint8, name string, tick time.Time, caller string, msg string) {
 		fmt.Fprintf(w, defaultFormat(lev, name, tick, caller, msg))
 	})
 }
 
 // Console get the default Console logger.
-func Console() *logger {
+func Console() *Logger {
 	return console
 }
 
 // Named special a name for the log for user to classify.keep for reuse is recommand.
-func (l *logger) Named(name string) *logger {
+func (l *Logger) Named(name string) *Logger {
 	if name == l.name {
 		return l
 	}
@@ -114,65 +114,65 @@ func (l *logger) Named(name string) *logger {
 	return &n
 }
 
-func (l *logger) Debug(args ...interface{}) {
+func (l *Logger) Debug(args ...interface{}) {
 	l.log(LevDEBUG, "", args...)
 }
 
-func (l *logger) Debugf(format string, args ...interface{}) {
+func (l *Logger) Debugf(format string, args ...interface{}) {
 	l.log(LevDEBUG, format, args...)
 }
 
 // Verbose verbose is design for get output for one problem when debug msg is too much.
 // delete or set level to debug after resolved is recommend.
-func (l *logger) Verbose(args ...interface{}) {
+func (l *Logger) Verbose(args ...interface{}) {
 	l.log(LevVERBO, "", args...)
 }
 
 // Verbosef verbose is design for get output for one problem when debug msg is too much.
 // delete or set level to debug after resolved is recommend.
-func (l *logger) Verbosef(format string, args ...interface{}) {
+func (l *Logger) Verbosef(format string, args ...interface{}) {
 	l.log(LevVERBO, format, args...)
 }
 
 // Infof log infomation msg
-func (l *logger) Info(args ...interface{}) {
+func (l *Logger) Info(args ...interface{}) {
 	l.log(LevINFO, "", args...)
 }
 
 // Infof log formatted infomation msg
-func (l *logger) Infof(format string, args ...interface{}) {
+func (l *Logger) Infof(format string, args ...interface{}) {
 	l.log(LevINFO, format, args...)
 }
 
-func (l *logger) Warn(args ...interface{}) {
+func (l *Logger) Warn(args ...interface{}) {
 	l.log(LevWARN, "", args...)
 }
 
-func (l *logger) Warnf(format string, args ...interface{}) {
+func (l *Logger) Warnf(format string, args ...interface{}) {
 	l.log(LevWARN, format, args...)
 }
 
-func (l *logger) Error(args ...interface{}) {
+func (l *Logger) Error(args ...interface{}) {
 	l.log(LevERROR, "", args...)
 }
 
-func (l *logger) Errorf(format string, args ...interface{}) {
+func (l *Logger) Errorf(format string, args ...interface{}) {
 	l.log(LevERROR, format, args...)
 }
 
 // Fatal log fatal msg,then call os.Exit(1)
-func (l *logger) Fatal(args ...interface{}) {
+func (l *Logger) Fatal(args ...interface{}) {
 	l.log(LevFATAL, "", args...)
 	os.Exit(1)
 }
 
 // Fatal log formatted fatal msg,then call os.Exit(1)
-func (l *logger) Fatalf(format string, args ...interface{}) {
+func (l *Logger) Fatalf(format string, args ...interface{}) {
 	l.log(LevFATAL, format, args...)
 	os.Exit(1)
 }
 
-func (l *logger) log(lev uint8, format string, fmtArgs ...interface{}) {
+func (l *Logger) log(lev uint8, format string, fmtArgs ...interface{}) {
 	if lev < l.rootLev {
 		return
 	}
@@ -191,7 +191,7 @@ func (l *logger) log(lev uint8, format string, fmtArgs ...interface{}) {
 }
 
 // caller get caller path(include the last package dir name).
-func (l *logger) caller(pc uintptr, file string, line int, ok bool) string {
+func (l *Logger) caller(pc uintptr, file string, line int, ok bool) string {
 	if !ok {
 		return "undefined"
 	}
@@ -261,7 +261,7 @@ func Fatalf(format string, args ...interface{}) {
 }
 
 // Named special a name for the log for user to classify.keep for reuse is recommand.
-func Named(name string) *logger {
+func Named(name string) *Logger {
 	return console.Named(name)
 }
 
